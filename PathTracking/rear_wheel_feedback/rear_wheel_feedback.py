@@ -51,21 +51,21 @@ class CubicSplinePath:
         self.ddY = self.Y.derivative(2)
 
         self.length = s[-1]
-    
+
     def calc_yaw(self, s):
         dx, dy = self.dX(s), self.dY(s)
         return np.arctan2(dy, dx)
-    
+
     def calc_curvature(self, s):
         dx, dy   = self.dX(s), self.dY(s)
         ddx, ddy   = self.ddX(s), self.ddY(s)
         return (ddy * dx - ddx * dy) / ((dx ** 2 + dy ** 2)**(3 / 2))
-    
+
     def __find_nearest_point(self, s0, x, y):
         def calc_distance(_s, *args):
             _x, _y= self.X(_s), self.Y(_s)
             return (_x - args[0])**2 + (_y - args[1])**2
-        
+
         def calc_distance_jacobian(_s, *args):
             _x, _y = self.X(_s), self.Y(_s)
             _dx, _dy = self.dX(_s), self.dY(_s)
@@ -76,7 +76,7 @@ class CubicSplinePath:
 
     def calc_track_error(self, x, y, s0):
         ret = self.__find_nearest_point(s0, x, y)
-        
+
         s = ret[0][0]
         e = ret[1]
 
@@ -184,7 +184,7 @@ def calc_target_speed(state, yaw_ref):
     if switch:
         state.direction *= -1
         return 0.0
-    
+
     if state.direction != 1:
         return -target_speed
 
