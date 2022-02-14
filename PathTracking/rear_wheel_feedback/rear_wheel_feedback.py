@@ -18,7 +18,7 @@ KTH = 1.0
 KE = 0.5
 
 dt = 0.1  # [s]
-L = 2.9  # [m]
+L  = 2.9  # [m]
 
 show_animation = True
 
@@ -119,11 +119,11 @@ def rear_wheel_feedback_control(state, e, k, yaw_ref):
     return delta
 
 
-def simulate(path_ref, goal):
+def simulate(path_ref, goal, x0=0, y0=0, yaw0=0, v0=0):
     T = 500.0  # max simulation time
     goal_dis = 0.3
 
-    state = State(x=-0.0, y=-0.0, yaw=0.0, v=0.0)
+    state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
     time = 0.0
     x = [state.x]
