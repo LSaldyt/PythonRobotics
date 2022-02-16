@@ -43,7 +43,6 @@ class State:
 
 
 class States:
-
     def __init__(self):
         self.x = []
         self.y = []
@@ -58,10 +57,16 @@ class States:
         self.v.append(state.v)
         self.t.append(t)
 
+    def vectorize(self):
+        return np.concatenate((np.array(self.x),
+                               np.array(self.y),
+                               np.array(self.t),
+                               np.array(self.yaw),
+                               np.array(self.v)), axis=0)
+
 
 def proportional_control(target, current):
     a = Kp * (target - current)
-
     return a
 
 
@@ -201,7 +206,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
         plt.grid(True)
         plt.show()
 
-    return np.concatenate([np.array([t, s.x, s.y, s.yaw, s.v]) for t, s in states])
+    return states.vectorize()
 
 if __name__ == '__main__':
     print("Pure pursuit path tracking simulation start")
