@@ -65,8 +65,8 @@ class States:
             yaw = 0 * yaw
         else:
             yaw = yaw / yaw_max
-        v_max = np.max(np.abs(v))
         v   = np.array(self.v)
+        v_max = np.max(np.abs(v))
         if np.isclose(v_max, 0):
             v = 0 * v
         else:
