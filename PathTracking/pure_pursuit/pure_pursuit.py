@@ -41,7 +41,6 @@ class State:
         dy = self.rear_y - point_y
         return math.hypot(dx, dy)
 
-
 class States:
     def __init__(self):
         self.x = []
@@ -57,18 +56,22 @@ class States:
         self.v.append(state.v)
         self.t.append(t)
 
-    def vectorize(self):
-        return np.concatenate((np.array(self.x),
-                               np.array(self.y),
-                               np.array(self.t),
-                               np.array(self.yaw),
-                               np.array(self.v)), axis=0)
+    def vectorize(self, size=100.0):
+        x   = np.array(self.x)
+        y   = np.array(self.y)
+        yaw = np.array(self.yaw)
+        yaw = yaw / (np.max(yaw) + 1e-16)
+        v   = np.array(self.v)
+        v   = v / (np.max(v) + 1e-16)
+        return np.concatenate((np.expand_dims(x,   -1) / size,
+                               np.expand_dims(y,   -1) / size,
+                               np.expand_dims(yaw, -1),
+                               np.expand_dims(v,   -1)), axis=1)
 
 
 def proportional_control(target, current):
     a = Kp * (target - current)
     return a
-
 
 class TargetCourse:
 
@@ -146,7 +149,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=100.0, show_animation=False):
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=100.0, show_animation=False, size=100.0):
     t_max = 100.0  # max simulation time
 
     # initial state
@@ -206,7 +209,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
         plt.grid(True)
         plt.show()
 
-    return states.vectorize()
+    return states.vectorize(size)
 
 if __name__ == '__main__':
     print("Pure pursuit path tracking simulation start")
