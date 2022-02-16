@@ -20,8 +20,6 @@ KE = 0.5
 dt = 0.1  # [s]
 L  = 2.9  # [m]
 
-show_animation = True
-
 class State:
     def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0, direction=1):
         self.x = x
@@ -119,8 +117,8 @@ def rear_wheel_feedback_control(state, e, k, yaw_ref):
     return delta
 
 
-def simulate(path_ref, goal, x0=0, y0=0, yaw0=0, v0=0):
-    T = 500.0  # max simulation time
+def simulate(path_ref, goal, x0=0, y0=0, yaw0=0, v0=0, show_animation=False):
+    T = 100.0  # max simulation time
     goal_dis = 0.3
 
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
@@ -172,6 +170,8 @@ def simulate(path_ref, goal, x0=0, y0=0, yaw0=0, v0=0):
             plt.grid(True)
             plt.title("speed[km/h]:{:.2f}, target s-param:{:.2f}".format(round(state.v * 3.6, 2), s0))
             plt.pause(0.0001)
+    else:
+        raise RuntimeError('Did not reach goal')
 
     return t, x, y, yaw, v, goal_flag
 
@@ -191,6 +191,8 @@ def calc_target_speed(state, yaw_ref):
     return target_speed
 
 def main():
+    show_animation = True
+
     print("rear wheel feedback tracking start!!")
     ax = [0.0, 6.0, 12.5, 5.0, 7.5, 3.0, -1.0]
     ay = [0.0, 0.0, 5.0, 6.5, 3.0, 5.0, -2.0]
@@ -199,7 +201,7 @@ def main():
     reference_path = CubicSplinePath(ax, ay)
     s = np.arange(0, reference_path.length, 0.1)
 
-    t, x, y, yaw, v, goal_flag = simulate(reference_path, goal)
+    t, x, y, yaw, v, goal_flag = simulate(reference_path, goal, show_animation=show_animation)
 
     # Test
     assert goal_flag, "Cannot goal"

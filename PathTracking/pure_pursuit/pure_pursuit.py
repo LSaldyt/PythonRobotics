@@ -17,8 +17,6 @@ Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
 
-show_animation = True
-
 
 class State:
 
@@ -143,17 +141,11 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def main():
-    #  target course
-    cx = np.arange(0, 50, 0.5)
-    cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
-
-    target_speed = 10.0 / 3.6  # [m/s]
-
-    T = 100.0  # max simulation time
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=100.0, show_animation=False):
+    t_max = 100.0  # max simulation time
 
     # initial state
-    state = State(x=-0.0, y=-3.0, yaw=0.0, v=0.0)
+    state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
     lastIndex = len(cx) - 1
     time = 0.0
@@ -162,7 +154,7 @@ def main():
     target_course = TargetCourse(cx, cy)
     target_ind, _ = target_course.search_target_index(state)
 
-    while T >= time and lastIndex > target_ind:
+    while t_max >= time and lastIndex > target_ind:
 
         # Calc control input
         ai = proportional_control(target_speed, state.v)
@@ -209,7 +201,14 @@ def main():
         plt.grid(True)
         plt.show()
 
+    return np.concatenate([np.array([t, s.x, s.y, s.yaw, s.v]) for t, s in states])
 
 if __name__ == '__main__':
     print("Pure pursuit path tracking simulation start")
-    main()
+    #  target course
+    cx = np.arange(0, 50, 0.5)
+    cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
+
+    target_speed = 10.0 / 3.6  # [m/s]
+
+    pure_pursuit(cx, cy, target_speed, show_animation=True)
