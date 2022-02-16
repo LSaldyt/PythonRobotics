@@ -60,9 +60,17 @@ class States:
         x   = np.array(self.x)
         y   = np.array(self.y)
         yaw = np.array(self.yaw)
-        yaw = yaw / (np.max(yaw) + 1e-16)
+        yaw_max = np.max(np.abs(yaw))
+        if np.isclose(yaw_max, 0):
+            yaw = 0 * yaw
+        else:
+            yaw = yaw / yaw_max
+        v_max = np.max(np.abs(v))
         v   = np.array(self.v)
-        v   = v / (np.max(v) + 1e-16)
+        if np.isclose(v_max, 0):
+            v = 0 * v
+        else:
+            v = v / v_max
         return np.concatenate((np.expand_dims(x,   -1) / size,
                                np.expand_dims(y,   -1) / size,
                                np.expand_dims(yaw, -1),
