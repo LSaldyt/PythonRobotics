@@ -171,32 +171,34 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
     target_ind, _ = target_course.search_target_index(state)
 
     while t_max >= time and lastIndex > target_ind:
+        try:
 
-        # Calc control input
-        ai = proportional_control(target_speed, state.v)
-        di, target_ind = pure_pursuit_steer_control(
-            state, target_course, target_ind)
+            # Calc control input
+            ai = proportional_control(target_speed, state.v)
+            di, target_ind = pure_pursuit_steer_control(
+                state, target_course, target_ind)
 
-        state.update(ai, di)  # Control vehicle
+            state.update(ai, di)  # Control vehicle
 
-        time += dt
-        states.append(time, state)
+            time += dt
+            states.append(time, state)
 
-        if show_animation:  # pragma: no cover
-            plt.cla()
-            # for stopping simulation with the esc key.
-            plt.gcf().canvas.mpl_connect(
-                'key_release_event',
-                lambda event: [exit(0) if event.key == 'escape' else None])
-            plot_arrow(state.x, state.y, state.yaw)
-            plt.plot(cx, cy, "-r", label="course")
-            plt.plot(states.x, states.y, "-b", label="trajectory")
-            plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
-            plt.axis("equal")
-            plt.grid(True)
-            plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
-            plt.pause(0.001)
-
+            if show_animation:  # pragma: no cover
+                plt.cla()
+                # for stopping simulation with the esc key.
+                plt.gcf().canvas.mpl_connect(
+                    'key_release_event',
+                    lambda event: [exit(0) if event.key == 'escape' else None])
+                plot_arrow(state.x, state.y, state.yaw)
+                plt.plot(cx, cy, "-r", label="course")
+                plt.plot(states.x, states.y, "-b", label="trajectory")
+                plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
+                plt.axis("equal")
+                plt.grid(True)
+                plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
+                plt.pause(0.001)
+        except:
+            break
     # Test
     assert lastIndex >= target_ind, "Cannot goal"
 
