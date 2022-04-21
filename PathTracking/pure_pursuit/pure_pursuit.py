@@ -227,4 +227,7 @@ if __name__ == '__main__':
 
     target_speed = 10.0 / 3.6  # [m/s]
 
-    pure_pursuit(cx, cy, target_speed, show_animation=True)
+    traj = pure_pursuit(cx, cy, target_speed, show_animation=True)
+    print(traj.shape)
+    print(traj)
+    1/0
