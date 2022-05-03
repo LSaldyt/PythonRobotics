@@ -9,6 +9,8 @@ author Atsushi Sakai (@Atsushi_twi)
 import math
 import sys
 import os
+from jax import jit
+import jax.numpy as jnp
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,10 +31,22 @@ lqr_Q = np.eye(5)
 lqr_R = np.eye(2)
 dt = 0.1  # time tick[s]
 L = 0.5  # Wheel base of the vehicle [m]
+m = 1.
+fm = 1e2
 max_steer = np.deg2rad(45.0)  # maximum steering angle[rad]
 
-show_animation = True
+base_max     = 1e2
+steering_max = np.pi
+velocity_max = 1e2
+force_max    = 1e6
+mass_max     = 1e3
+SPEED_TARGET = 10.0 / 3.6  # simulation parameter km/h -> m/s
 
+PARAMS = np.array([L  / base_max,
+                   max_steer  / steering_max,
+                   SPEED_TARGET / velocity_max,
+                   fm / force_max,
+                   m  / mass_max])
 
 class State:
     def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
@@ -41,18 +55,33 @@ class State:
         self.yaw = yaw
         self.v = v
 
-def update(state, a, delta):
+    def as_array(self):
+        return np.array([x, y, yaw, v])
 
-    if delta >= max_steer:
-        delta = max_steer
-    if delta <= - max_steer:
-        delta = - max_steer
+# Copy for diff-able RL
+@jit
+def dynamics(t, x, u):
+    f, w = jnp.split(u, 2, axis=-1)
+    w = jnp.maximum(jnp.minimum(w, self.l), -self.l)
+    # f = jnp.maximum(jnp.minimum(f, self.fm), -self.fm)
+    x, y, yaw, v = jnp.split(x, 4, axis=-1)
+    # Update dynamics
+    x   = x + v * jnp.cos(yaw) * t
+    y   = y + v * jnp.sin(yaw) * t
+    yaw = yaw + v / self.b * jnp.tan(w) * t
+    v   = v + (f/self.m) * t
+    # v   = jnp.maximum(jnp.minimum(v, self.vm), -self.vm)
+    # Repack vectors
+    next_state = jnp.concatenate((x, y, yaw, v))
+    return next_state
 
+def update(state, f, delta):
+    delta = min(max(delta, -max_steer), max_steer)
+    f     = min(max(f, -fm), fm)
     state.x = state.x + state.v * math.cos(state.yaw) * dt
     state.y = state.y + state.v * math.sin(state.yaw) * dt
     state.yaw = state.yaw + state.v / L * math.tan(delta) * dt
-    state.v = state.v + a * dt
-
+    state.v = state.v + (f/m) * dt
     return state
 
 
@@ -183,8 +212,7 @@ def calc_nearest_index(state, cx, cy, cyaw):
     return ind, mind
 
 
-def do_simulation(cx, cy, cyaw, ck, speed_profile, goal):
-    T = 500.0  # max simulation time
+def do_simulation(cx, cy, cyaw, ck, speed_profile, goal, show_animation=False, T=500.):
     goal_dis = 0.3
     stop_speed = 0.05
 
@@ -195,6 +223,9 @@ def do_simulation(cx, cy, cyaw, ck, speed_profile, goal):
     y = [state.y]
     yaw = [state.yaw]
     v = [state.v]
+    dls = [0.]
+    fs  = [0.]
+
     t = [0.0]
 
     e, e_th = 0.0, 0.0
@@ -222,27 +253,28 @@ def do_simulation(cx, cy, cyaw, ck, speed_profile, goal):
         yaw.append(state.yaw)
         v.append(state.v)
         t.append(time)
+        fs.append(ai)
+        dls.append(dl)
 
-        if target_ind % 1 == 0 and show_animation:
-            plt.cla()
-            # for stopping simulation with the esc key.
-            plt.gcf().canvas.mpl_connect('key_release_event',
-                    lambda event: [exit(0) if event.key == 'escape' else None])
-            plt.plot(cx, cy, "-r", label="course")
-            plt.plot(x, y, "ob", label="trajectory")
-            plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
-            plt.axis("equal")
-            plt.grid(True)
-            plt.title("speed[km/h]:" + str(round(state.v * 3.6, 2))
-                      + ",target index:" + str(target_ind))
-            plt.pause(0.0001)
+        # if target_ind % 1 == 0 and show_animation:
+        #     plt.cla()
+        #     # for stopping simulation with the esc key.
+        #     plt.gcf().canvas.mpl_connect('key_release_event',
+        #             lambda event: [exit(0) if event.key == 'escape' else None])
+        #     plt.plot(cx, cy, "-r", label="course")
+        #     plt.plot(x, y, "ob", label="trajectory")
+        #     plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
+        #     plt.axis("equal")
+        #     plt.grid(True)
+        #     plt.title("speed[km/h]:" + str(round(state.v * 3.6, 2))
+        #               + ",target index:" + str(target_ind))
+        #     plt.pause(0.0001)
 
-    return t, x, y, yaw, v
+    return t, x, y, yaw, v, fs, dls
 
 
 def calc_speed_profile(cyaw, target_speed):
     speed_profile = [target_speed] * len(cyaw)
-
     direction = 1.0
 
     # Set stop point
@@ -266,23 +298,34 @@ def calc_speed_profile(cyaw, target_speed):
         speed_profile[-i] = target_speed / (50 - i)
         if speed_profile[-i] <= 1.0 / 3.6:
             speed_profile[-i] = 1.0 / 3.6
-
     return speed_profile
 
-
-def main():
-    print("LQR steering control tracking start!!")
-    ax = [0.0, 6.0, 12.5, 10.0, 17.5, 20.0, 25.0]
-    ay = [0.0, -3.0, -5.0, 6.5, 3.0, 0.0, 0.0]
+def fit_waypoints(waypoints, T=50.):
+    ax, ay = np.split(waypoints, 2, axis=-1)
+    ax = np.squeeze(ax)
+    ay = np.squeeze(ay)
     goal = [ax[-1], ay[-1]]
-
     cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
         ax, ay, ds=0.1)
-    target_speed = 10.0 / 3.6  # simulation parameter km/h -> m/s
+    sp = calc_speed_profile(cyaw, SPEED_TARGET)
+    lists = do_simulation(cx, cy, cyaw, ck, sp, goal, T=T)
+    return np.vstack(tuple(np.array(l) for l in lists))
 
-    sp = calc_speed_profile(cyaw, target_speed)
+def main():
+    ax = [0.0, 6.0, 12.5, 10.0, 17.5, 20.0, 25.0]
+    ay = [0.0, -3.0, -5.0, 6.5, 3.0, 0.0, 0.0]
 
-    t, x, y, yaw, v = do_simulation(cx, cy, cyaw, ck, sp, goal)
+    traj = fit_waypoints(ax, ay, T=1000.)
+    print(traj.shape)
+    1/0
+
+    #cx, cy, cyaw, ck, s = cubic_spline_planner.calc_spline_course(
+    #    ax, ay, ds=0.1)
+    #target_speed = 10.0 / 3.6  # simulation parameter km/h -> m/s
+
+    #sp = calc_speed_profile(cyaw, target_speed)
+
+    #t, x, y, yaw, v = do_simulation(cx, cy, cyaw, ck, sp, goal)
 
     if show_animation:  # pragma: no cover
         plt.close()

@@ -6,17 +6,23 @@ author: Atsushi Sakai (@Atsushi_twi)
         Guillaume Jacquenot (@Gjacquenot)
 
 """
+from jax import jit
+import jax.numpy as jnp
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 
 # Parameters
-k = 0.1  # look forward gain
-Lfc = 2.0  # [m] look-ahead distance
+k = 0.1   # look forward gain
+Lfc = 2.0 # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
-dt = 0.1  # [s] time tick
+dt = 0.05 # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
+m = 1.
 
+wb_max = 10.
+m_max  = 100.
+PARAMS = np.array([WB / wb_max, m/m_max])
 
 class State:
 
@@ -28,11 +34,11 @@ class State:
         self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
         self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
 
-    def update(self, a, delta):
+    def update(self, f, delta):
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
         self.yaw += self.v / WB * math.tan(delta) * dt
-        self.v += a * dt
+        self.v += (f/m) * dt
         self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
         self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
 
@@ -41,6 +47,21 @@ class State:
         dy = self.rear_y - point_y
         return math.hypot(dx, dy)
 
+@jit
+def dynamics(t, x, u):
+    f, w = jnp.split(u, 2, axis=-1)
+    x, y, yaw, v, rear_x, rear_y = jnp.split(x, 6, axis=-1)
+    # Update dynamics
+    x   = x + v * jnp.cos(yaw) * t
+    y   = y + v * jnp.sin(yaw) * t
+    yaw = yaw + v / WB * jnp.tan(w) * t
+    v   = v + (f/m) * t
+    # Repack vectors
+    rear_x = self.x - ((WB / 2) * jnp.cos(yaw))
+    rear_y = self.y - ((WB / 2) * jnp.sin(yaw))
+    next_state = jnp.concatenate((x, y, yaw, v, rear_x, rear_y))
+    return next_state
+
 class States:
     def __init__(self):
         self.x = []
@@ -48,13 +69,21 @@ class States:
         self.yaw = []
         self.v = []
         self.t = []
+        self.rear_x = []
+        self.rear_y = []
+        self.ai     = []
+        self.di     = []
 
-    def append(self, t, state):
+    def append(self, t, state, ai, di):
         self.x.append(state.x)
         self.y.append(state.y)
         self.yaw.append(state.yaw)
         self.v.append(state.v)
         self.t.append(t)
+        self.rear_x.append(state.rear_x)
+        self.rear_y.append(state.rear_y)
+        self.ai.append(ai)
+        self.di.append(di)
 
     def vectorize(self, size=100.0):
         x   = np.array(self.x)
@@ -74,7 +103,12 @@ class States:
         return np.concatenate((np.expand_dims(x,   -1) / size,
                                np.expand_dims(y,   -1) / size,
                                np.expand_dims(yaw, -1),
-                               np.expand_dims(v,   -1)), axis=1)
+                               np.expand_dims(v,   -1),
+                               np.expand_dims(self.rear_x,   -1) / size,
+                               np.expand_dims(self.rear_y,   -1) / size,
+                               np.expand_dims(self.ai, -1),
+                               np.expand_dims(self.di, -1),
+                               ), axis=1)
 
 
 def proportional_control(target, current):
@@ -166,7 +200,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
     lastIndex = len(cx) - 1
     time = 0.0
     states = States()
-    states.append(time, state)
+    states.append(time, state, 0., 0.)
     target_course = TargetCourse(cx, cy)
     target_ind, _ = target_course.search_target_index(state)
 
@@ -180,7 +214,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
         state.update(ai, di)  # Control vehicle
 
         time += dt
-        states.append(time, state)
+        states.append(time, state, ai, di)
 
         if show_animation:  # pragma: no cover
             plt.cla()
