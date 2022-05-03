@@ -57,8 +57,8 @@ def dynamics(t, x, u):
     yaw = yaw + v / WB * jnp.tan(w) * t
     v   = v + (f/m) * t
     # Repack vectors
-    rear_x = self.x - ((WB / 2) * jnp.cos(yaw))
-    rear_y = self.y - ((WB / 2) * jnp.sin(yaw))
+    rear_x = x - ((WB / 2) * jnp.cos(yaw))
+    rear_y = y - ((WB / 2) * jnp.sin(yaw))
     next_state = jnp.concatenate((x, y, yaw, v, rear_x, rear_y))
     return next_state
 
