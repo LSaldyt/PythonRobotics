@@ -16,12 +16,16 @@ import matplotlib.pyplot as plt
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
-dt = 0.05 # [s] time tick
+# dt = 0.05 # [s] time tick
+# dt = 0.05 # [s] time tick
+dt = 1.0 # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
 m = 1.
 
 wb_max = 10.
 m_max  = 100.
+YAW_MAX = 10.
+V_MAX   = 2.7
 PARAMS = np.array([WB / wb_max, m/m_max])
 
 class State:
@@ -89,25 +93,20 @@ class States:
         x   = np.array(self.x)
         y   = np.array(self.y)
         yaw = np.array(self.yaw)
-        yaw_max = np.max(np.abs(yaw))
-        if np.isclose(yaw_max, 0):
-            yaw = 0 * yaw
-        else:
-            yaw = yaw / yaw_max
         v   = np.array(self.v)
-        v_max = np.max(np.abs(v))
-        if np.isclose(v_max, 0):
-            v = 0 * v
-        else:
-            v = v / v_max
+        rear_x = np.array(self.rear_x)
+        rear_y = np.array(self.rear_y)
+        di = np.array(self.di)
+        ai = np.array(self.ai)
+
         return np.concatenate((np.expand_dims(x,   -1) / size,
                                np.expand_dims(y,   -1) / size,
-                               np.expand_dims(yaw, -1),
-                               np.expand_dims(v,   -1),
-                               np.expand_dims(self.rear_x,   -1) / size,
-                               np.expand_dims(self.rear_y,   -1) / size,
-                               np.expand_dims(self.ai, -1),
-                               np.expand_dims(self.di, -1),
+                               np.expand_dims(yaw, -1) / YAW_MAX,
+                               np.expand_dims(v,   -1) / V_MAX,
+                               np.expand_dims(rear_x,   -1) / size,
+                               np.expand_dims(rear_y,   -1) / size,
+                               np.expand_dims(di, -1) / YAW_MAX,
+                               np.expand_dims(ai, -1) / V_MAX,
                                ), axis=1)
 
 
@@ -191,9 +190,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=100.0, show_animation=False, size=100.0):
-    t_max = 100.0  # max simulation time
-
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0):
     # initial state
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
@@ -208,8 +205,11 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
 
         # Calc control input
         ai = proportional_control(target_speed, state.v)
-        di, target_ind = pure_pursuit_steer_control(
-            state, target_course, target_ind)
+        try:
+            di, target_ind = pure_pursuit_steer_control(
+                state, target_course, target_ind)
+        except IndexError:
+            break
 
         state.update(ai, di)  # Control vehicle
 
