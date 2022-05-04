@@ -16,9 +16,6 @@ import matplotlib.pyplot as plt
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
-# dt = 0.05 # [s] time tick
-# dt = 0.05 # [s] time tick
-dt = 1.0 # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
 m = 1.
 
@@ -38,7 +35,7 @@ class State:
         self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
         self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
 
-    def update(self, f, delta):
+    def update(self, f, delta, dt):
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
         self.yaw += self.v / WB * math.tan(delta) * dt
@@ -190,7 +187,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0):
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=1.):
     # initial state
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
@@ -211,7 +208,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
         except IndexError:
             break
 
-        state.update(ai, di)  # Control vehicle
+        state.update(ai, di, dt)  # Control vehicle
 
         time += dt
         states.append(time, state, ai, di)
