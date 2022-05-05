@@ -16,14 +16,16 @@ import matplotlib.pyplot as plt
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
-WB = 2.9  # [m] wheel base of vehicle
+b = 1.  # [m] wheel base of vehicle
+b = 2.7
 m = 1.
 
-wb_max = 10.
-m_max  = 100.
-YAW_MAX = 10.
-V_MAX   = 2.7
-PARAMS = np.array([WB / wb_max, m/m_max])
+BASE_MAX  = 10.
+MASS_MAX  = 100.
+YAW_MAX   = 10.
+V_MAX     = 2.7
+FORCE_MAX = 1.0
+PARAMS = np.array([b / BASE_MAX, m/MASS_MAX, FORCE_MAX])
 
 class State:
     def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
@@ -31,16 +33,19 @@ class State:
         self.y = y
         self.yaw = yaw
         self.v = v
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
+        self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
+        self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
 
     def update(self, f, delta, dt):
+        f     = math.tanh(f) * FORCE_MAX
+        # delta = math.tanh(delta) * YAW_MAX
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
-        self.yaw += self.v / WB * math.tan(delta) * dt
+        self.yaw += self.v / b * math.tan(delta) * dt
         self.v += (f/m) * dt
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
+        self.v = math.tanh(self.v) * V_MAX
+        self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
+        self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
 
     def calc_distance(self, point_x, point_y):
         dx = self.rear_x - point_x
@@ -50,16 +55,21 @@ class State:
 @jit
 def dynamics(t, x, u):
     f, w = jnp.split(u, 2, axis=-1)
-    x, y, yaw, v, rear_x, rear_y = jnp.split(x, 6, axis=-1)
+    f = jnp.tanh(f) * FORCE_MAX
+    # w = jnp.tanh(w) * YAW_MAX
+    x, y, rear_x, rear_y, sin_yaw, cos_yaw, v = jnp.split(x, 7, axis=-1)
+    yaw = jnp.arcsin(sin_yaw)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
-    yaw = yaw + v / WB * jnp.tan(w) * t
+    yaw = yaw + v / b * jnp.tan(w) * t
+    # yaw = jnp.tanh(yaw) * YAW_MAX
     v   = v + (f/m) * t
+    v   = jnp.tanh(v) * V_MAX
     # Repack vectors
-    rear_x = x - ((WB / 2) * jnp.cos(yaw))
-    rear_y = y - ((WB / 2) * jnp.sin(yaw))
-    next_state = jnp.concatenate((x, y, yaw, v, rear_x, rear_y))
+    rear_x = x - ((b / 2) * jnp.cos(yaw))
+    rear_y = y - ((b / 2) * jnp.sin(yaw))
+    next_state = jnp.concatenate((x, y, jnp.sin(yaw), jnp.cos(yaw), v, rear_x, rear_y))
     return next_state
 
 class States:
@@ -86,21 +96,22 @@ class States:
         self.di.append(di)
 
     def vectorize(self, size=100.0):
-        x   = np.array(self.x)
-        y   = np.array(self.y)
-        yaw = np.array(self.yaw)
-        v   = np.array(self.v)
+        x      = np.array(self.x)
+        y      = np.array(self.y)
+        yaw    = np.array(self.yaw)
+        v      = np.array(self.v)
         rear_x = np.array(self.rear_x)
         rear_y = np.array(self.rear_y)
-        di = np.array(self.di)
-        ai = np.array(self.ai)
+        di     = np.array(self.di)
+        ai     = np.array(self.ai)
 
         return np.concatenate((np.expand_dims(x,   -1) / size,
                                np.expand_dims(y,   -1) / size,
-                               np.expand_dims(yaw, -1) / YAW_MAX,
-                               np.expand_dims(v,   -1) / V_MAX,
                                np.expand_dims(rear_x,   -1) / size,
                                np.expand_dims(rear_y,   -1) / size,
+                               np.expand_dims(np.sin(yaw), -1),
+                               np.expand_dims(np.cos(yaw), -1),
+                               np.expand_dims(v,   -1) / V_MAX,
                                np.expand_dims(di, -1) / YAW_MAX,
                                np.expand_dims(ai, -1) / V_MAX,
                                ), axis=1)
@@ -166,8 +177,7 @@ def pure_pursuit_steer_control(state, trajectory, pind):
         ind = len(trajectory.cx) - 1
 
     alpha = math.atan2(ty - state.rear_y, tx - state.rear_x) - state.yaw
-
-    delta = math.atan2(2.0 * WB * math.sin(alpha) / Lf, 1.0)
+    delta = math.atan2(2.0 * b * math.sin(alpha) / Lf, 1.0)
 
     return delta, ind
 
@@ -186,7 +196,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=1.):
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=0.25):
     # initial state
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
