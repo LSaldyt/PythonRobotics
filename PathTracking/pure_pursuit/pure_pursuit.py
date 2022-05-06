@@ -16,16 +16,17 @@ import matplotlib.pyplot as plt
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
-b = 1.  # [m] wheel base of vehicle
-b = 2.7
+b = 1.    # [m] wheel base of vehicle
 m = 1.
 
-BASE_MAX  = 10.
-MASS_MAX  = 100.
-YAW_MAX   = 10.
-V_MAX     = 2.7
-FORCE_MAX = 1.0
-PARAMS = np.array([b / BASE_MAX, m/MASS_MAX, FORCE_MAX])
+BASE_MAX   = 10.
+MASS_MAX   = 100.
+STEER_MAX  = np.deg2rad(40.)
+POSS_STEER = np.deg2rad(180.)
+YAW_MAX    = 10.
+V_MAX      = 3.
+FORCE_MAX  = 1.0
+PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 class State:
     def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
@@ -38,7 +39,7 @@ class State:
 
     def update(self, f, delta, dt):
         f     = math.tanh(f) * FORCE_MAX
-        # delta = math.tanh(delta) * YAW_MAX
+        delta = math.tanh(delta) * STEER_MAX
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
         self.yaw += self.v / b * math.tan(delta) * dt
@@ -56,20 +57,23 @@ class State:
 def dynamics(t, x, u):
     f, w = jnp.split(u, 2, axis=-1)
     f = jnp.tanh(f) * FORCE_MAX
-    # w = jnp.tanh(w) * YAW_MAX
-    x, y, rear_x, rear_y, sin_yaw, cos_yaw, v = jnp.split(x, 7, axis=-1)
-    yaw = jnp.arcsin(sin_yaw)
+    w = jnp.tanh(w) * STEER_MAX
+    x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
-    yaw = yaw + v / b * jnp.tan(w) * t
-    # yaw = jnp.tanh(yaw) * YAW_MAX
+    # x   = x + v * cos_yaw * t
+    # y   = y + v * sin_yaw * t
+    yaw = jnp.tanh(yaw) * YAW_MAX
+    v   = jnp.tanh(v) * V_MAX
     v   = v + (f/m) * t
     v   = jnp.tanh(v) * V_MAX
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
     rear_y = y - ((b / 2) * jnp.sin(yaw))
-    next_state = jnp.concatenate((x, y, jnp.sin(yaw), jnp.cos(yaw), v, rear_x, rear_y))
+    # rear_x = x - ((b / 2) * cos_yaw)
+    # rear_y = y - ((b / 2) * sin_yaw)
+    next_state = jnp.concatenate((x, y, rear_x, rear_y, yaw, jnp.sin(yaw), jnp.cos(yaw), v))
     return next_state
 
 class States:
@@ -109,6 +113,7 @@ class States:
                                np.expand_dims(y,   -1) / size,
                                np.expand_dims(rear_x,   -1) / size,
                                np.expand_dims(rear_y,   -1) / size,
+                               np.expand_dims(yaw, -1) / YAW_MAX,
                                np.expand_dims(np.sin(yaw), -1),
                                np.expand_dims(np.cos(yaw), -1),
                                np.expand_dims(v,   -1) / V_MAX,
@@ -266,7 +271,7 @@ if __name__ == '__main__':
 
     target_speed = 10.0 / 3.6  # [m/s]
 
-    traj = pure_pursuit(cx, cy, target_speed, show_animation=True)
+    traj = pure_pursuit(cx, cy, target_speed, show_animation=True, dt=0.1)
     print(traj.shape)
     print(traj)
     1/0
