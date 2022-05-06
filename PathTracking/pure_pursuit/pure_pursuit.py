@@ -28,6 +28,29 @@ V_MAX      = 3.
 FORCE_MAX  = 1.0
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
+@jit
+def dynamics(t, x, u):
+    w, f = jnp.split(u, 2, axis=-1)
+    # Basically we assume tanh & scaling is applied to inputs by a nn fairie
+    # f = jnp.tanh(f) * FORCE_MAX
+    # w = jnp.tanh(w) * STEER_MAX
+    # f = f * FORCE_MAX
+    # w = w * STEER_MAX
+    x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
+    # v   = v * V_MAX
+    # Update dynamics
+    x   = x + v * jnp.cos(yaw) * t
+    y   = y + v * jnp.sin(yaw) * t
+    yaw += v / b * jnp.tan(w) * t
+    v   = v + (f/m) * t
+    v   = jnp.tanh(v) * V_MAX
+    # Repack vectors
+    rear_x = x - ((b / 2) * jnp.cos(yaw))
+    rear_y = y - ((b / 2) * jnp.sin(yaw))
+    next_state = jnp.concatenate((x, y, rear_x, rear_y, yaw,
+                                  jnp.sin(yaw), jnp.cos(yaw), v))
+    return next_state
+
 class State:
     def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
         self.x = x
@@ -40,42 +63,21 @@ class State:
     def update(self, f, delta, dt):
         f     = math.tanh(f) * FORCE_MAX
         delta = math.tanh(delta) * STEER_MAX
-        self.x += self.v * math.cos(self.yaw) * dt
-        self.y += self.v * math.sin(self.yaw) * dt
-        self.yaw += self.v / b * math.tan(delta) * dt
-        self.v += (f/m) * dt
-        self.v = math.tanh(self.v) * V_MAX
-        self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
+        u = jnp.array([delta, f])
+        x = jnp.array([self.x, self.y, self.rear_x, self.rear_y, self.yaw,
+                       jnp.sin(self.yaw), jnp.cos(self.yaw)])
+        # self.x += self.v * math.cos(self.yaw) * dt
+        # self.y += self.v * math.sin(self.yaw) * dt
+        # self.yaw += self.v / b * math.tan(delta) * dt
+        # self.v += (f/m) * dt
+        # self.v = math.tanh(self.v) * V_MAX
+        # self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
+        # self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
 
     def calc_distance(self, point_x, point_y):
         dx = self.rear_x - point_x
         dy = self.rear_y - point_y
         return math.hypot(dx, dy)
-
-@jit
-def dynamics(t, x, u):
-    f, w = jnp.split(u, 2, axis=-1)
-    f = jnp.tanh(f) * FORCE_MAX
-    w = jnp.tanh(w) * STEER_MAX
-    x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
-    # Update dynamics
-    x   = x + v * jnp.cos(yaw) * t
-    y   = y + v * jnp.sin(yaw) * t
-    # x   = x + v * cos_yaw * t
-    # y   = y + v * sin_yaw * t
-    yaw += v / b * jnp.tan(w) * t
-    # yaw = jnp.tanh(yaw) * YAW_MAX
-    v   = jnp.tanh(v) * V_MAX
-    v   = v + (f/m) * t
-    # v   = jnp.tanh(v) * V_MAX
-    # Repack vectors
-    rear_x = x - ((b / 2) * jnp.cos(yaw))
-    rear_y = y - ((b / 2) * jnp.sin(yaw))
-    # rear_x = x - ((b / 2) * cos_yaw)
-    # rear_y = y - ((b / 2) * sin_yaw)
-    next_state = jnp.concatenate((x, y, rear_x, rear_y, yaw, jnp.sin(yaw), jnp.cos(yaw), v))
-    return next_state
 
 class States:
     def __init__(self):
@@ -119,7 +121,7 @@ class States:
                                np.expand_dims(np.cos(yaw), -1),
                                np.expand_dims(v,   -1) / V_MAX,
                                np.expand_dims(di, -1) / YAW_MAX,
-                               np.expand_dims(ai, -1) / V_MAX,
+                               np.expand_dims(ai, -1) / FORCE_MAX,
                                ), axis=1)
 
 
