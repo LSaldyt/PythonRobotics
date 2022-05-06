@@ -65,7 +65,15 @@ class State:
         delta = math.tanh(delta) * STEER_MAX
         u = jnp.array([delta, f])
         x = jnp.array([self.x, self.y, self.rear_x, self.rear_y, self.yaw,
-                       jnp.sin(self.yaw), jnp.cos(self.yaw)])
+                       jnp.sin(self.yaw), jnp.cos(self.yaw), self.v])
+        x_new = dynamics(dt, x, u)
+        x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x_new, 8, axis=-1)
+        self.x      = float(x)
+        self.y      = float(y)
+        self.rear_x = float(rear_x)
+        self.rear_y = float(rear_y)
+        self.yaw    = float(yaw)
+        self.v      = float(v)
         # self.x += self.v * math.cos(self.yaw) * dt
         # self.y += self.v * math.sin(self.yaw) * dt
         # self.yaw += self.v / b * math.tan(delta) * dt
