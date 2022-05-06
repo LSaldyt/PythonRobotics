@@ -64,10 +64,11 @@ def dynamics(t, x, u):
     y   = y + v * jnp.sin(yaw) * t
     # x   = x + v * cos_yaw * t
     # y   = y + v * sin_yaw * t
-    yaw = jnp.tanh(yaw) * YAW_MAX
+    yaw += v / b * jnp.tan(w) * t
+    # yaw = jnp.tanh(yaw) * YAW_MAX
     v   = jnp.tanh(v) * V_MAX
     v   = v + (f/m) * t
-    v   = jnp.tanh(v) * V_MAX
+    # v   = jnp.tanh(v) * V_MAX
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
     rear_y = y - ((b / 2) * jnp.sin(yaw))
