@@ -128,7 +128,7 @@ class States:
                                np.expand_dims(np.sin(yaw), -1),
                                np.expand_dims(np.cos(yaw), -1),
                                np.expand_dims(v,   -1) / V_MAX,
-                               np.expand_dims(di, -1) / YAW_MAX,
+                               np.expand_dims(di, -1) / STEER_MAX,
                                np.expand_dims(ai, -1) / FORCE_MAX,
                                ), axis=1)
 
