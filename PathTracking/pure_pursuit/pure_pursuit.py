@@ -12,6 +12,9 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
+class FinishError(Exception):
+    pass
+
 # Parameters
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
@@ -20,7 +23,7 @@ b = 1.    # [m] wheel base of vehicle
 m = 1.
 
 BASE_MAX   = 10.
-MASS_MAX   = 100.
+MASS_MAX   = 10.
 STEER_MAX  = np.deg2rad(57.5) # Yeah why not
 POSS_STEER = np.pi
 V_MAX      = 1.
@@ -37,7 +40,9 @@ def dynamics(t, x, u):
     y   = y + v * jnp.sin(yaw) * t
     yaw += v / b * jnp.tan(w) * t # The most sus :)
     v   = v + (f/m) * t           # Not too sus
-    v   = jnp.tanh(v) * V_MAX
+    v   = jnp.minimum(v, V_MAX)
+    yaw = jnp.maximum(yaw, -POSS_STEER) # Keep between -pi, pi
+    yaw = jnp.minimum(yaw, POSS_STEER)
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
     rear_y = y - ((b / 2) * jnp.sin(yaw))
@@ -106,6 +111,29 @@ class States:
         rear_y = np.array(self.rear_y)
         di     = np.array(self.di)
         ai     = np.array(self.ai)
+
+        # print(np.expand_dims(x,   -1) / size)
+        # print(np.expand_dims(y,   -1) / size)
+        # print(np.expand_dims(rear_x,   -1) / size)
+        # print(np.expand_dims(rear_y,   -1) / size)
+        # print(np.expand_dims(yaw, -1) / POSS_STEER)
+        # print(np.expand_dims(np.sin(yaw), -1))
+        # print(np.expand_dims(np.cos(yaw), -1))
+        # print(np.expand_dims(v,   -1) / V_MAX)
+        # print(np.expand_dims(di, -1) / STEER_MAX)
+        # print(np.expand_dims(ai, -1) / FORCE_MAX)
+
+        e = 1e-4
+        assert np.max(np.abs(x/size)) <= 1. + e, np.max(np.abs(x/size))
+        assert np.max(np.abs(y/size)) <= 1. + e, np.max(np.abs(y/size))
+        assert np.max(np.abs(rear_x/size)) <= 1. + e, np.max(np.abs(rear_x/size))
+        assert np.max(np.abs(rear_y/size)) <= 1. + e, np.max(np.abs(rear_y/size))
+        assert np.max(np.abs(yaw/ POSS_STEER)) <= 1. + e, np.abs(yaw/ POSS_STEER)
+        assert np.max(np.abs(np.sin(yaw))) <= 1. + e, np.max(np.abs(np.sin(yaw)))
+        assert np.max(np.abs(np.cos(yaw))) <= 1. + e, np.max(np.abs(np.cos(yaw)))
+        assert np.max(np.abs(v/ V_MAX)) <= 1. + e, np.max(np.abs(v/ V_MAX))
+        assert np.max(np.abs(di/ STEER_MAX)) <= 1. + e, np.max(np.abs(di/ STEER_MAX))
+        assert np.max(np.abs(ai/ FORCE_MAX)) <= 1. + e, np.max(np.abs(ai/ FORCE_MAX))
 
         return np.concatenate((np.expand_dims(x,   -1) / size,
                                np.expand_dims(y,   -1) / size,
@@ -198,7 +226,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
         plt.plot(x, y)
 
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=0.25):
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=0.5):
     # initial state
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
 
@@ -220,6 +248,8 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
             break
 
         state.update(ai, di, dt)  # Control vehicle
+        if abs(state.x) > size or abs(state.y) > size:
+            break # Out of bounds
 
         time += dt
         states.append(time, state, ai, di)
@@ -227,9 +257,13 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
         if show_animation:  # pragma: no cover
             plt.cla()
             # for stopping simulation with the esc key.
-            plt.gcf().canvas.mpl_connect(
-                'key_release_event',
-                lambda event: [exit(0) if event.key == 'escape' else None])
+            def callback(event):
+                if event.key == 'escape':
+                    return states.vectorize
+                    exit(0)
+                else:
+                    return [None]
+            plt.gcf().canvas.mpl_connect('key_release_event', callback)
             plot_arrow(state.x, state.y, state.yaw)
             plt.plot(cx, cy, "-r", label="course")
             plt.plot(states.x, states.y, "-b", label="trajectory")
@@ -242,22 +276,25 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
     # Test
     assert lastIndex >= target_ind, "Cannot goal"
 
-    if show_animation:  # pragma: no cover
-        plt.cla()
-        plt.plot(cx, cy, ".r", label="course")
-        plt.plot(states.x, states.y, "-b", label="trajectory")
-        plt.legend()
-        plt.xlabel("x[m]")
-        plt.ylabel("y[m]")
-        plt.axis("equal")
-        plt.grid(True)
+    try:
+        if show_animation:  # pragma: no cover
+            plt.cla()
+            plt.plot(cx, cy, ".r", label="course")
+            plt.plot(states.x, states.y, "-b", label="trajectory")
+            plt.legend()
+            plt.xlabel("x[m]")
+            plt.ylabel("y[m]")
+            plt.axis("equal")
+            plt.grid(True)
 
-        plt.subplots(1)
-        plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
-        plt.xlabel("Time[s]")
-        plt.ylabel("Speed[km/h]")
-        plt.grid(True)
-        plt.show()
+            plt.subplots(1)
+            plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
+            plt.xlabel("Time[s]")
+            plt.ylabel("Speed[km/h]")
+            plt.grid(True)
+            plt.show()
+    except KeyboardInterrupt:
+        pass
 
     return states.vectorize(size)
 
@@ -269,7 +306,7 @@ if __name__ == '__main__':
 
     target_speed = 10.0 / 3.6  # [m/s]
 
-    traj = pure_pursuit(cx, cy, target_speed, show_animation=True, dt=0.5)
+    traj = pure_pursuit(cx, cy, target_speed, show_animation=True, dt=0.25)
     print(traj.shape)
     print(traj)
     1/0
