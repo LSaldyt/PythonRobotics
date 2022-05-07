@@ -21,28 +21,22 @@ m = 1.
 
 BASE_MAX   = 10.
 MASS_MAX   = 100.
-STEER_MAX  = np.deg2rad(40.)
-POSS_STEER = np.deg2rad(180.)
-YAW_MAX    = 10.
-V_MAX      = 3.
-FORCE_MAX  = 1.0
+STEER_MAX  = np.deg2rad(57.5) # Yeah why not
+POSS_STEER = np.pi
+V_MAX      = 1.
+FORCE_MAX  = 1.
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 @jit
 def dynamics(t, x, u):
     w, f = jnp.split(u, 2, axis=-1)
     # Basically we assume tanh & scaling is applied to inputs by a nn fairie
-    # f = jnp.tanh(f) * FORCE_MAX
-    # w = jnp.tanh(w) * STEER_MAX
-    # f = f * FORCE_MAX
-    # w = w * STEER_MAX
     x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
-    # v   = v * V_MAX
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
-    yaw += v / b * jnp.tan(w) * t
-    v   = v + (f/m) * t
+    yaw += v / b * jnp.tan(w) * t # The most sus :)
+    v   = v + (f/m) * t           # Not too sus
     v   = jnp.tanh(v) * V_MAX
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
@@ -74,13 +68,6 @@ class State:
         self.rear_y = float(rear_y)
         self.yaw    = float(yaw)
         self.v      = float(v)
-        # self.x += self.v * math.cos(self.yaw) * dt
-        # self.y += self.v * math.sin(self.yaw) * dt
-        # self.yaw += self.v / b * math.tan(delta) * dt
-        # self.v += (f/m) * dt
-        # self.v = math.tanh(self.v) * V_MAX
-        # self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
-        # self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
 
     def calc_distance(self, point_x, point_y):
         dx = self.rear_x - point_x
@@ -107,8 +94,8 @@ class States:
         self.t.append(t)
         self.rear_x.append(state.rear_x)
         self.rear_y.append(state.rear_y)
-        self.ai.append(ai)
-        self.di.append(di)
+        self.ai.append(math.tanh(ai) * FORCE_MAX)
+        self.di.append(math.tanh(di) * STEER_MAX)
 
     def vectorize(self, size=100.0):
         x      = np.array(self.x)
@@ -124,7 +111,7 @@ class States:
                                np.expand_dims(y,   -1) / size,
                                np.expand_dims(rear_x,   -1) / size,
                                np.expand_dims(rear_y,   -1) / size,
-                               np.expand_dims(yaw, -1) / YAW_MAX,
+                               np.expand_dims(yaw, -1) / POSS_STEER,
                                np.expand_dims(np.sin(yaw), -1),
                                np.expand_dims(np.cos(yaw), -1),
                                np.expand_dims(v,   -1) / V_MAX,
