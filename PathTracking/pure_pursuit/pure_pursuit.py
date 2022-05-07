@@ -124,10 +124,11 @@ class States:
         # print(np.expand_dims(ai, -1) / FORCE_MAX)
 
         e = 1e-4
-        assert np.max(np.abs(x/size)) <= 1. + e, np.max(np.abs(x/size))
-        assert np.max(np.abs(y/size)) <= 1. + e, np.max(np.abs(y/size))
-        assert np.max(np.abs(rear_x/size)) <= 1. + e, np.max(np.abs(rear_x/size))
-        assert np.max(np.abs(rear_y/size)) <= 1. + e, np.max(np.abs(rear_y/size))
+        # Relax these assumptions, as it's more or less fine to go slightly out of bounds, just not too far!
+        assert np.max(np.abs(x/size)) <= 1.5 + e, np.max(np.abs(x/size))
+        assert np.max(np.abs(y/size)) <= 1.5 + e, np.max(np.abs(y/size))
+        assert np.max(np.abs(rear_x/size)) <= 1.5 + e, np.max(np.abs(rear_x/size))
+        assert np.max(np.abs(rear_y/size)) <= 1.5 + e, np.max(np.abs(rear_y/size))
         assert np.max(np.abs(yaw/ POSS_STEER)) <= 1. + e, np.abs(yaw/ POSS_STEER)
         assert np.max(np.abs(np.sin(yaw))) <= 1. + e, np.max(np.abs(np.sin(yaw)))
         assert np.max(np.abs(np.cos(yaw))) <= 1. + e, np.max(np.abs(np.cos(yaw)))
