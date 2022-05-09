@@ -59,6 +59,12 @@ class State:
         self.rear_x = self.x - ((b / 2) * math.cos(self.yaw))
         self.rear_y = self.y - ((b / 2) * math.sin(self.yaw))
 
+    def apply_noise(self, rng, obs_noise):
+        self.x   += rng.normal(scale=obs_noise)
+        self.y   += rng.normal(scale=obs_noise)
+        self.yaw += rng.normal(scale=obs_noise)
+        self.v   += rng.normal(scale=obs_noise)
+
     def update(self, f, delta, dt):
         f     = math.tanh(f) * FORCE_MAX
         delta = math.tanh(delta) * STEER_MAX
@@ -226,10 +232,17 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
                   fc=fc, ec=ec, head_width=width, head_length=width)
         plt.plot(x, y)
 
+from numpy.random import default_rng
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0, t_max=128.0, show_animation=False, size=100.0, dt=0.5):
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0,
+        t_max=128.0, show_animation=False, size=100.0, dt=0.5,
+        obs_noise=5e-2,
+        act_noise=5e-2,
+        seed=2022):
+
     # initial state
     state = State(x=x0, y=y0, yaw=yaw0, v=v0)
+    rng = default_rng(seed)
 
     lastIndex = len(cx) - 1
     time = 0.0
@@ -239,13 +252,15 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
     target_ind, _ = target_course.search_target_index(state)
 
     while t_max >= time and lastIndex > target_ind:
-
+        state.apply_noise(rng, obs_noise)
         # Calc control input
         ai = proportional_control(target_speed, state.v)
+        ai += rng.normal(loc=0.0, scale=act_noise)
         try:
             di, target_ind = pure_pursuit_steer_control(
                 state, target_course, target_ind)
-        except IndexError:
+            di += rng.normal(loc=0.0, scale=act_noise)
+        except IndexError: # If spline path is less than max time
             break
 
         state.update(ai, di, dt)  # Control vehicle
