@@ -157,9 +157,6 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         i += 1
         states = append_state(states, i, state, ai, di)
 
-    print('Total time: ')
-    print(time)
-
     # Test
     assert lastIndex >= target_ind, "Cannot goal"
 
@@ -176,7 +173,7 @@ def vectorize(states, size=100.0):
     states_vec[:, 9]  /= ACCEL_FACT
     # jnp.array([jnp.tanh(di), jnp.tanh(ai)]))
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    print(np.max(np.abs(states_vec), axis=0))
+    # print(np.max(np.abs(states_vec), axis=0))
     assert np.max(np.abs(states_vec[:, 4:])) < 1.00001
     return states_vec
 
@@ -193,8 +190,8 @@ if __name__ == '__main__':
     target_speed = 10.0 / 3.6  # [m/s]
 
     traj = pure_pursuit(cx, cy, target_speed, dt=0.5)
-    print(traj.shape)
-    print(traj)
+    # print(traj.shape)
+    # print(traj)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cx/100., y=cy/100., name='spline'))
     fig.add_trace(go.Scatter(x=traj[:, 0], y=traj[:, 1], name='pure pursuit'))
