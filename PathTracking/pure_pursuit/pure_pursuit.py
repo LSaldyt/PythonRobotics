@@ -35,10 +35,10 @@ ACCEL_FACT = 10/3.6
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 @jit
-def dynamics(t, x, u):
+def dynamics(t, state, action):
     # Basically we assume tanh & scaling is applied to inputs by a nn fairie
-    w, f = jnp.split(u, 2, axis=-1)
-    x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
+    w, f = jnp.split(action, 2, axis=-1)
+    x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v, go = jnp.split(state, 9, axis=-1)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
@@ -53,7 +53,7 @@ def dynamics(t, x, u):
     rear_y = y - ((b / 2) * jnp.sin(yaw))
     next_state = jnp.concatenate((x, y, rear_x, rear_y, yaw,
                                   jnp.sin(yaw), jnp.cos(yaw), v))
-    return next_state
+    return (go * next_state) + ((1 - go) * state) # Use go to gate :)
 
 @jit
 def initial_state(x=0.0, y=0.0, yaw=0.0, v=0.0):
@@ -71,7 +71,7 @@ def update(state, f, delta, dt):
     f     = jnp.tanh(f) * FORCE_MAX
     delta = jnp.tanh(delta) * STEER_MAX
     state = state.at[-2:].set(jnp.array([delta, f]))
-    x_new = dynamics(dt, state[:8], state[-2:])
+    x_new = dynamics(dt, jnp.concatenate((state[:8], jnp.array([1]))), state[-2:])
     state = state.at[:8].set(x_new)
     return state
 
