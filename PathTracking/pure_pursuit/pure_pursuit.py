@@ -91,50 +91,35 @@ def proportional_control(target, current):
     a = Kp * (target - current)
     return a
 
-# @jit
+from jax.lax import dynamic_slice
+
+# @partial(jit, static_argnums=(3,))
 def search_target_index(state, cx, cy, old_i):
-    # if old_i is None:
-    # search nearest point index
-    d = jnp.hypot(state[2] - cx, state[3] - cy)
-    ind = jnp.argmin(d)
+    l = len(cx)
+    dists = calc_distance(state, cx, cy)
+    ind   = jnp.argmin(dists)
     old_i = ind
-    # else:
-    #     ind = old_i
-    #     distance_this_index = calc_distance(state, cx[ind], cy[ind])
-    #     while True:
-    #         distance_next_index = calc_distance(state, cx[ind + 1], cy[ind + 1])
-    #         if distance_this_index < distance_next_index:
-    #             break
-    #         ind = ind + 1 if (ind + 1) < len(cx) else ind
-    #         distance_this_index = distance_next_index
-    #     old_i = ind
 
     Lf = k * state[7] + Lfc  # update look ahead distance
 
-    # search look ahead target point index
-    ind = jnp.argmax(Lf - calc_distance(state, cx, cy))
-    # while Lf > calc_distance(state, cx[ind], cy[ind]):
-    #     if (ind + 1) >= len(cx):
-    #         break  # not exceed goal
-    #     ind += 1
-
+    ahead = dists
+    cond  = jnp.where(Lf > ahead, 1, 0)
+    alt   = cond + jnp.where(ind <= jnp.arange(l), cond, 1)
+    cond  = dynamic_slice(cond, (ind,), (l - ind,))
+    first = jnp.argmin(cond) + ind
+    alt_i = jnp.argmin(alt)
+    ind = alt_i
+    print(first, alt_i)
+    assert first == alt_i
     return ind, Lf, old_i
 
-@jit
+# @jit
 def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
     ind, Lf, old_i = search_target_index(state, cx, cy, old_i)
 
-    ind = jnp.maximum(pind, ind)
-
+    ind = jnp.minimum(jnp.maximum(pind, ind), len(cx) - 1)
     tx = cx[ind]
     ty = cy[ind]
-    # if ind < len(cx):
-    #     tx = cx[ind]
-    #     ty = cy[ind]
-    # else:  # toward goal
-    #     tx = cx[-1]
-    #     ty = cy[-1]
-    #     ind = len(cx) - 1
 
     alpha = jnp.arctan2(ty - state[3], tx - state[2]) - state[4]
     delta = jnp.arctan2(2.0 * b * jnp.sin(alpha) / Lf, 1.0)
@@ -160,7 +145,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     i_max = int(t_max / dt)
     states = jnp.zeros((i_max, 10))
     states = append_state(states, i, state, 0., 0.)
-    target_ind, _, old_i = search_target_index(state, cx, cy, None)
+    target_ind, _, old_i = search_target_index(state, cx, cy, 0)
 
     while t_max >= time and lastIndex > target_ind:
         state = apply_noise(state, key, state_noise)
