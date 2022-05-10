@@ -31,7 +31,7 @@ STEER_MAX  = np.deg2rad(57.5) # Yeah why not
 POSS_STEER = np.pi
 V_MAX      = 1.
 FORCE_MAX  = 1.
-ACCEL_FACT = 2.8
+ACCEL_FACT = 10/3.6
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 @jit
@@ -74,98 +74,85 @@ def update(state, f, delta, dt):
     state = state.at[:8].set(x_new)
     return state
 
+@jit
 def calc_distance(state, point_x, point_y):
     dx = state[2] - point_x
     dy = state[3] - point_y
     return jnp.hypot(dx, dy)
 
-# @partial(jit, static_argnums=0)
+@jit
 def append_state(states, i, state, ai, di):
     state = state.at[-2:].set(jnp.array([di, ai]))
     states = states.at[i, :].set(state)
     return states
 
-def vectorize(states, size=100.0):
-    states_vec = np.asarray(states).copy()
-    states_vec[:, :4] /= size
-    states_vec[:, 4]  /= POSS_STEER
-    states_vec[:, 5]  = np.sin(states_vec[:, 4])
-    states_vec[:, 6]  = np.cos(states_vec[:, 5])
-    states_vec[:, 7]  /= V_MAX
-    # states_vec[:, 8]  /= V_MAX
-    states_vec[:, 9]  /= ACCEL_FACT
-    # jnp.array([jnp.tanh(di), jnp.tanh(ai)]))
-    # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    print(np.max(np.abs(states_vec), axis=0))
-    assert np.max(np.abs(states_vec[:, 4:])) < 1.00001
-    return states_vec
-
+@jit
 def proportional_control(target, current):
     a = Kp * (target - current)
     return a
 
+# @jit
 def search_target_index(state, cx, cy, old_i):
-    if old_i is None:
-        # search nearest point index
-        d = jnp.hypot(state[2] - cx, state[3] - cy)
-        ind = jnp.argmin(d)
-        old_i = ind
-    else:
-        ind = old_i
-        distance_this_index = calc_distance(state, cx[ind], cy[ind])
-        while True:
-            distance_next_index = calc_distance(state, cx[ind + 1], cy[ind + 1])
-            if distance_this_index < distance_next_index:
-                break
-            ind = ind + 1 if (ind + 1) < len(cx) else ind
-            distance_this_index = distance_next_index
-        old_i = ind
+    # if old_i is None:
+    # search nearest point index
+    d = jnp.hypot(state[2] - cx, state[3] - cy)
+    ind = jnp.argmin(d)
+    old_i = ind
+    # else:
+    #     ind = old_i
+    #     distance_this_index = calc_distance(state, cx[ind], cy[ind])
+    #     while True:
+    #         distance_next_index = calc_distance(state, cx[ind + 1], cy[ind + 1])
+    #         if distance_this_index < distance_next_index:
+    #             break
+    #         ind = ind + 1 if (ind + 1) < len(cx) else ind
+    #         distance_this_index = distance_next_index
+    #     old_i = ind
 
     Lf = k * state[7] + Lfc  # update look ahead distance
 
     # search look ahead target point index
-    while Lf > calc_distance(state, cx[ind], cy[ind]):
-        if (ind + 1) >= len(cx):
-            break  # not exceed goal
-        ind += 1
+    ind = jnp.argmax(Lf - calc_distance(state, cx, cy))
+    # while Lf > calc_distance(state, cx[ind], cy[ind]):
+    #     if (ind + 1) >= len(cx):
+    #         break  # not exceed goal
+    #     ind += 1
 
     return ind, Lf, old_i
 
-
+@jit
 def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
     ind, Lf, old_i = search_target_index(state, cx, cy, old_i)
 
-    if pind >= ind:
-        ind = pind
+    ind = jnp.maximum(pind, ind)
 
-    if ind < len(cx):
-        tx = cx[ind]
-        ty = cy[ind]
-    else:  # toward goal
-        tx = cx[-1]
-        ty = cy[-1]
-        ind = len(cx) - 1
+    tx = cx[ind]
+    ty = cy[ind]
+    # if ind < len(cx):
+    #     tx = cx[ind]
+    #     ty = cy[ind]
+    # else:  # toward goal
+    #     tx = cx[-1]
+    #     ty = cy[-1]
+    #     ind = len(cx) - 1
 
     alpha = jnp.arctan2(ty - state[3], tx - state[2]) - state[4]
-    delta = jnp.arctan2(2.0 * b * math.sin(alpha) / Lf, 1.0)
+    delta = jnp.arctan2(2.0 * b * jnp.sin(alpha) / Lf, 1.0)
 
     return delta, ind, old_i
 
 
 import jax.random as jr
 
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0,
-        t_max=128.0, show_animation=False, size=100.0, dt=0.5,
-        state_noise=None,
-        act_noise=0.,
-        seed=2022):
+# @partial(jit, static_argnames=('dt', 'seed',))
+def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
+        t_max=128.0, size=100.0, dt=0.5, seed=2022):
 
     # initial state
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     key = jr.PRNGKey(seed)
     _, key = jr.split(key)
-    if state_noise is None:
-        state_noise = jr.uniform(key, minval=0, maxval=2e-1) # Either no noise or max 2e-1
+    state_noise = jr.uniform(key, minval=0, maxval=2e-1) # Either no noise or max 2e-1
 
     lastIndex = len(cx) - 1
     time = 0.0
@@ -199,6 +186,21 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=--3.0, yaw0=0.0, v0=0.0
 
     return vectorize(states)
 
+def vectorize(states, size=100.0):
+    states_vec = np.asarray(states).copy()
+    states_vec[:, :4] /= size
+    states_vec[:, 4]  /= POSS_STEER
+    states_vec[:, 5]  = np.sin(states_vec[:, 4])
+    states_vec[:, 6]  = np.cos(states_vec[:, 5])
+    states_vec[:, 7]  /= V_MAX
+    # states_vec[:, 8]  /= V_MAX
+    states_vec[:, 9]  /= ACCEL_FACT
+    # jnp.array([jnp.tanh(di), jnp.tanh(ai)]))
+    # assert np.max(np.abs(states_vec[:, :4])) < 1.5
+    print(np.max(np.abs(states_vec), axis=0))
+    assert np.max(np.abs(states_vec[:, 4:])) < 1.00001
+    return states_vec
+
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -206,12 +208,12 @@ import plotly.graph_objects as go
 if __name__ == '__main__':
     print("Pure pursuit path tracking simulation start")
     #  target course
-    cx = np.arange(0, 50, 0.5)
-    cy = np.array([math.sin(ix / 5.0) * ix / 2.0 for ix in cx])
+    cx = jnp.arange(0, 50, 0.5)
+    cy = jnp.sin(cx / 5.0) * cx / 2.0
 
     target_speed = 10.0 / 3.6  # [m/s]
 
-    traj = pure_pursuit(cx, cy, target_speed, show_animation=True, dt=0.5)
+    traj = pure_pursuit(cx, cy, target_speed, dt=0.5)
     print(traj.shape)
     print(traj)
     fig = go.Figure()
