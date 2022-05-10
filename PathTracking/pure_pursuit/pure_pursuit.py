@@ -36,14 +36,15 @@ PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 @jit
 def dynamics(t, x, u):
-    w, f = jnp.split(u, 2, axis=-1)
     # Basically we assume tanh & scaling is applied to inputs by a nn fairie
+    w, f = jnp.split(u, 2, axis=-1)
     x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v = jnp.split(x, 8, axis=-1)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
     yaw += v / b * jnp.tan(w) * t # The most sus :)
     v   = v + (f/m) * t           # Not too sus
+    # Not sure if 100% necessary
     v   = jnp.minimum(v, V_MAX)
     yaw = jnp.maximum(yaw, -POSS_STEER) # Keep between -pi, pi
     yaw = jnp.minimum(yaw, POSS_STEER)
@@ -91,8 +92,6 @@ def proportional_control(target, current):
     a = Kp * (target - current)
     return a
 
-from jax.lax import dynamic_slice
-
 @jit
 def search_target_index(state, cx, cy, old_i):
     l = len(cx)
@@ -103,22 +102,18 @@ def search_target_index(state, cx, cy, old_i):
     Lf = k * state[7] + Lfc  # update look ahead distance
 
     # Elegance.
-    cond  = jnp.where(Lf > dists, 1, 0)
-    alt   = cond + jnp.where(ind <= jnp.arange(l), cond, 1)
-    ind   = jnp.argmin(alt)
+    cond = jnp.where(Lf > dists, 1, 0)
+    alt  = cond + jnp.where(ind <= jnp.arange(l), cond, 1)
+    ind  = jnp.argmin(alt)
     return ind, Lf, old_i
 
 @jit
 def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
     ind, Lf, old_i = search_target_index(state, cx, cy, old_i)
-
     ind = jnp.minimum(jnp.maximum(pind, ind), len(cx) - 1)
-    tx = cx[ind]
-    ty = cy[ind]
 
-    alpha = jnp.arctan2(ty - state[3], tx - state[2]) - state[4]
+    alpha = jnp.arctan2(cy[ind] - state[3], cx[ind] - state[2]) - state[4]
     delta = jnp.arctan2(2.0 * b * jnp.sin(alpha) / Lf, 1.0)
-
     return delta, ind, old_i
 
 import jax.random as jr
@@ -135,8 +130,7 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     state_noise = 0.
 
     lastIndex = len(cx) - 1
-    time = 0.0
-    i = 0
+    time = 0.0; i = 0
     i_max = int(t_max / dt)
     states = jnp.zeros((i_max, 10))
     states = append_state(states, i, state, 0., 0.)
@@ -151,15 +145,9 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
                 state, cx, cy, old_i, target_ind)
         except IndexError: # If spline path is less than max time
             break
-
         state = update(state, ai, di, dt)  # Control vehicle
-
-        time += dt
-        i += 1
+        time += dt; i += 1
         states = append_state(states, i, state, ai, di)
-
-    # Test
-    assert lastIndex >= target_ind, "Cannot goal"
 
     return vectorize(states)
 
@@ -189,7 +177,7 @@ if __name__ == '__main__':
 
     target_speed = 10.0 / 3.6  # [m/s]
 
-    traj = pure_pursuit(cx, cy, target_speed, dt=0.5)
+    traj = pure_pursuit(cx, cy, target_speed, dt=1.0)
     # print(traj.shape)
     # print(traj)
     fig = go.Figure()
