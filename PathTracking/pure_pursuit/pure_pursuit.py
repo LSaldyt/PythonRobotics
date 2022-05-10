@@ -93,7 +93,7 @@ def proportional_control(target, current):
 
 from jax.lax import dynamic_slice
 
-# @partial(jit, static_argnums=(3,))
+@jit
 def search_target_index(state, cx, cy, old_i):
     l = len(cx)
     dists = calc_distance(state, cx, cy)
@@ -102,18 +102,13 @@ def search_target_index(state, cx, cy, old_i):
 
     Lf = k * state[7] + Lfc  # update look ahead distance
 
-    ahead = dists
-    cond  = jnp.where(Lf > ahead, 1, 0)
+    # Elegance.
+    cond  = jnp.where(Lf > dists, 1, 0)
     alt   = cond + jnp.where(ind <= jnp.arange(l), cond, 1)
-    cond  = dynamic_slice(cond, (ind,), (l - ind,))
-    first = jnp.argmin(cond) + ind
-    alt_i = jnp.argmin(alt)
-    ind = alt_i
-    print(first, alt_i)
-    assert first == alt_i
+    ind   = jnp.argmin(alt)
     return ind, Lf, old_i
 
-# @jit
+@jit
 def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
     ind, Lf, old_i = search_target_index(state, cx, cy, old_i)
 
@@ -125,7 +120,6 @@ def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
     delta = jnp.arctan2(2.0 * b * jnp.sin(alpha) / Lf, 1.0)
 
     return delta, ind, old_i
-
 
 import jax.random as jr
 
