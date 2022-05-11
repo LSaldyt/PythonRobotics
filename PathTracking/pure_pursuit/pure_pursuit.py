@@ -40,7 +40,6 @@ PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 def dynamics(t, state, action):
     # Basically we assume tanh & scaling is applied to inputs by a nn fairie
     w, f = jnp.split(action, 2, axis=-1)
-    # w = jnp.minimum(jnp.maximum(w, -STEER_MAX), STEER_MAX)
     x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v, go = jnp.split(state, 9, axis=-1)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
@@ -132,6 +131,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     i_max = int(t_max / dt)
     states = jnp.zeros((i_max, 10))
     states = append_state(states, i, state, 0., 0.)
+    i += 1
     target_ind, _, old_i = search_target_index(state, cx, cy, 0)
 
     while t_max >= time and lastIndex > target_ind:
@@ -142,10 +142,11 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
             di, target_ind, old_i = pure_pursuit_steer_control(
                 state, cx, cy, old_i, target_ind)
         except IndexError: # If spline path is less than max time
+            print('Insufficient time!')
             break
-        state = update(state, ai, di, dt)  # Control vehicle
+        states = append_state(states, i, state, ai, di)
+        state = update(state, ai, di, dt)
         time += dt; i += 1
-        states = append_state(states, i, state, ai, di) # Holy crap
 
     return vectorize(states)
 
@@ -156,11 +157,12 @@ def vectorize(states, size=100.0):
     states_vec[:, 5]  = np.sin(states_vec[:, 4])
     states_vec[:, 6]  = np.cos(states_vec[:, 5])
     states_vec[:, 7]  /= V_MAX
+    states_vec[:, 8]  /= STEER_MAX
     states_vec[:, 9]  /= V_MAX
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    # if np.max(np.abs(states_vec[:, 4:])) > 1.00001:
-    #     print(np.max(np.abs(states_vec), axis=0))
-    #     raise ValueError('Pure pursuit must return a normalized array')
+    if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
+        print(np.max(np.abs(states_vec), axis=0))
+        raise ValueError('Pure pursuit must return a normalized array')
     return states_vec
 
 
