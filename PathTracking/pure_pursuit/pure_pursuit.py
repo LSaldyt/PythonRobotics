@@ -15,21 +15,24 @@ from functools import partial
 from rich.traceback import install
 install(show_locals=False)
 
+# from jax.config import config
+# config.update('jax_disable_jit', True)
+
 class FinishError(Exception):
     pass
 
 # Parameters
 k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
-Kp = 1.0  # speed proportional gain
-b = 1.    # [m] wheel base of vehicle
-m = 1.
+Kp  = 1.0  # speed proportional gain
+b   = 1.    # [m] wheel base of vehicle
+m   = 10.
 
 BASE_MAX   = 10.
 MASS_MAX   = 10.
 STEER_MAX  = 1. # one radian max steering np.deg2rad(57.5) # Yeah why not
 POSS_STEER = np.pi
-V_MAX      = 1.
+V_MAX      = 2.
 FORCE_MAX  = 1.
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
@@ -42,11 +45,9 @@ def dynamics(t, state, action):
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
     y   = y + v * jnp.sin(yaw) * t
-    yaw += v / b * jnp.tan(w) * t # The most sus :)
-    v   = v + (f/m) * t           # Not too sus
-    # Not sure if 100% necessary
-    # v   = jnp.minimum(v, V_MAX)
-    # yaw = jnp.minimum(jnp.maximum(yaw, -POSS_STEER), POSS_STEER) # Keep between -pi, pi
+    yaw += v / b * jnp.tan(w) * t
+    v   = v + (f/m) * t
+    v   = jnp.minimum(v, V_MAX)
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
     rear_y = y - ((b / 2) * jnp.sin(yaw))
@@ -116,7 +117,7 @@ def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
 import jax.random as jr
 
 # @partial(jit, static_argnames=('dt', 'seed',))
-def pure_pursuit(cx, cy, target_speed=1., x0=0, y0=0.0, yaw0=0.0, v0=0.0,
+def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         t_max=128.0, size=100.0, dt=0.5, seed=2022):
 
     # initial state
@@ -136,28 +137,30 @@ def pure_pursuit(cx, cy, target_speed=1., x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     while t_max >= time and lastIndex > target_ind:
         state = apply_noise(state, key, state_noise)
         # Calc control input
-        ai = proportional_control(target_speed, state[7])
+        ai = proportional_control(V_MAX, state[7])
         try:
             di, target_ind, old_i = pure_pursuit_steer_control(
                 state, cx, cy, old_i, target_ind)
         except IndexError: # If spline path is less than max time
             break
         state = update(state, ai, di, dt)  # Control vehicle
+        states = append_state(states, i, state, ai, di) # Holy crap
         time += dt; i += 1
-        states = append_state(states, i, state, ai, di)
 
     return vectorize(states)
 
 def vectorize(states, size=100.0):
     states_vec = np.asarray(states).copy()
     states_vec[:, :4] /= size
-    states_vec[:, 4]  = 0. # Don't report yaw :)
+    # states_vec[:, 4]  = 0. # Don't report yaw :)
     states_vec[:, 5]  = np.sin(states_vec[:, 4])
     states_vec[:, 6]  = np.cos(states_vec[:, 5])
     states_vec[:, 7]  /= V_MAX
+    states_vec[:, 9]  /= V_MAX
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    # print(np.max(np.abs(states_vec), axis=0))
-    assert np.max(np.abs(states_vec[:, 4:])) < 1.00001
+    # if np.max(np.abs(states_vec[:, 4:])) > 1.00001:
+    #     print(np.max(np.abs(states_vec), axis=0))
+    #     raise ValueError('Pure pursuit must return a normalized array')
     return states_vec
 
 
@@ -170,9 +173,7 @@ if __name__ == '__main__':
     cx = jnp.arange(0, 50, 0.5)
     cy = jnp.sin(cx / 5.0) * cx / 2.0
 
-    target_speed = 1.  # [m/s]
-
-    traj = pure_pursuit(cx, cy, target_speed, dt=1.0)
+    traj = pure_pursuit(cx, cy, dt=0.5)
     # print(traj.shape)
     # print(traj)
     fig = go.Figure()
