@@ -53,7 +53,7 @@ def dynamics(t, state, action):
     rear_y = y - ((b / 2) * jnp.sin(yaw))
     next_state = jnp.concatenate((x, y, rear_x, rear_y, yaw,
                                   jnp.sin(yaw), jnp.cos(yaw), v))
-    return (go * next_state) + ((1 - go) * state) # Use go to gate :)
+    return (go * next_state) + ((1 - go) * state[:-1]) # Use go to gate :)
 
 @jit
 def initial_state(x=0.0, y=0.0, yaw=0.0, v=0.0):
