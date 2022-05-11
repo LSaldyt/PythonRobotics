@@ -27,17 +27,17 @@ m = 1.
 
 BASE_MAX   = 10.
 MASS_MAX   = 10.
-STEER_MAX  = np.deg2rad(57.5) # Yeah why not
+STEER_MAX  = 1. # one radian max steering np.deg2rad(57.5) # Yeah why not
 POSS_STEER = np.pi
 V_MAX      = 1.
 FORCE_MAX  = 1.
-ACCEL_FACT = 10/3.6
 PARAMS = np.array([b/BASE_MAX, m/MASS_MAX, STEER_MAX/POSS_STEER, FORCE_MAX])
 
 @jit
 def dynamics(t, state, action):
     # Basically we assume tanh & scaling is applied to inputs by a nn fairie
     w, f = jnp.split(action, 2, axis=-1)
+    # w = jnp.minimum(jnp.maximum(w, -STEER_MAX), STEER_MAX)
     x, y, rear_x, rear_y, yaw, sin_yaw, cos_yaw, v, go = jnp.split(state, 9, axis=-1)
     # Update dynamics
     x   = x + v * jnp.cos(yaw) * t
@@ -45,9 +45,8 @@ def dynamics(t, state, action):
     yaw += v / b * jnp.tan(w) * t # The most sus :)
     v   = v + (f/m) * t           # Not too sus
     # Not sure if 100% necessary
-    v   = jnp.minimum(v, V_MAX)
-    yaw = jnp.maximum(yaw, -POSS_STEER) # Keep between -pi, pi
-    yaw = jnp.minimum(yaw, POSS_STEER)
+    # v   = jnp.minimum(v, V_MAX)
+    # yaw = jnp.minimum(jnp.maximum(yaw, -POSS_STEER), POSS_STEER) # Keep between -pi, pi
     # Repack vectors
     rear_x = x - ((b / 2) * jnp.cos(yaw))
     rear_y = y - ((b / 2) * jnp.sin(yaw))
@@ -68,8 +67,6 @@ def apply_noise(state, key, state_noise):
 
 @jit
 def update(state, f, delta, dt):
-    f     = jnp.tanh(f) * FORCE_MAX
-    delta = jnp.tanh(delta) * STEER_MAX
     state = state.at[-2:].set(jnp.array([delta, f]))
     x_new = dynamics(dt, jnp.concatenate((state[:8], jnp.array([1]))), state[-2:])
     state = state.at[:8].set(x_new)
@@ -119,7 +116,7 @@ def pure_pursuit_steer_control(state, cx, cy, old_i, pind):
 import jax.random as jr
 
 # @partial(jit, static_argnames=('dt', 'seed',))
-def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
+def pure_pursuit(cx, cy, target_speed=1., x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         t_max=128.0, size=100.0, dt=0.5, seed=2022):
 
     # initial state
@@ -154,12 +151,10 @@ def pure_pursuit(cx, cy, target_speed=10.0/3.6, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
 def vectorize(states, size=100.0):
     states_vec = np.asarray(states).copy()
     states_vec[:, :4] /= size
-    states_vec[:, 4]  /= POSS_STEER
+    states_vec[:, 4]  = 0. # Don't report yaw :)
     states_vec[:, 5]  = np.sin(states_vec[:, 4])
     states_vec[:, 6]  = np.cos(states_vec[:, 5])
     states_vec[:, 7]  /= V_MAX
-    states_vec[:, 8]  /= STEER_MAX
-    states_vec[:, 9]  /= ACCEL_FACT
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
     # print(np.max(np.abs(states_vec), axis=0))
     assert np.max(np.abs(states_vec[:, 4:])) < 1.00001
@@ -175,7 +170,7 @@ if __name__ == '__main__':
     cx = jnp.arange(0, 50, 0.5)
     cy = jnp.sin(cx / 5.0) * cx / 2.0
 
-    target_speed = 10.0 / 3.6  # [m/s]
+    target_speed = 1.  # [m/s]
 
     traj = pure_pursuit(cx, cy, target_speed, dt=1.0)
     # print(traj.shape)
