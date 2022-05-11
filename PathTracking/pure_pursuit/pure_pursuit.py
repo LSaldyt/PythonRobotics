@@ -144,8 +144,8 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         except IndexError: # If spline path is less than max time
             break
         state = update(state, ai, di, dt)  # Control vehicle
-        states = append_state(states, i, state, ai, di) # Holy crap
         time += dt; i += 1
+        states = append_state(states, i, state, ai, di) # Holy crap
 
     return vectorize(states)
 
