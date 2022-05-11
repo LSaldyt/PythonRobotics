@@ -118,7 +118,6 @@ import jax.random as jr
 # @partial(jit, static_argnames=('dt', 'seed',))
 def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         t_max=128.0, size=100.0, dt=0.5, seed=2022):
-
     # initial state
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     key = jr.PRNGKey(seed)
@@ -135,7 +134,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     target_ind, _, old_i = search_target_index(state, cx, cy, 0)
 
     while t_max >= time and lastIndex > target_ind:
-        state = apply_noise(state, key, state_noise)
+        # state = apply_noise(state, key, state_noise)
         # Calc control input
         ai = proportional_control(V_MAX, state[7])
         try:
@@ -144,25 +143,23 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         except IndexError: # If spline path is less than max time
             print('Insufficient time!')
             break
-        states = append_state(states, i, state, ai, di)
         state = update(state, ai, di, dt)
+        states = append_state(states, i, state, ai, di)
         time += dt; i += 1
 
     return vectorize(states)
 
 def vectorize(states, size=100.0):
     states_vec = np.asarray(states).copy()
-    states_vec[:, :4] /= size
-    # states_vec[:, 4]  = 0. # Don't report yaw :)
-    states_vec[:, 5]  = np.sin(states_vec[:, 4])
-    states_vec[:, 6]  = np.cos(states_vec[:, 5])
-    states_vec[:, 7]  /= V_MAX
-    states_vec[:, 8]  /= STEER_MAX
-    states_vec[:, 9]  /= V_MAX
+    # states_vec[:, :4] /= size
+    # # states_vec[:, 4]  = 0. # Don't report yaw :)
+    # states_vec[:, 7]  /= V_MAX
+    # states_vec[:, 8]  /= STEER_MAX
+    # states_vec[:, 9]  /= V_MAX
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
-        print(np.max(np.abs(states_vec), axis=0))
-        raise ValueError('Pure pursuit must return a normalized array')
+    # if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
+    #     print(np.max(np.abs(states_vec), axis=0))
+    #     raise ValueError('Pure pursuit must return a normalized array')
     return states_vec
 
 
