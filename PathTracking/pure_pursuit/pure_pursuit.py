@@ -26,10 +26,10 @@ k = 0.1   # look forward gain
 Lfc = 2.0 # [m] look-ahead distance
 Kp  = 1.0  # speed proportional gain
 b   = 1.    # [m] wheel base of vehicle
-m   = 10.
+m   = 100.
 
-BASE_MAX   = 10.
-MASS_MAX   = 10.
+BASE_MAX   = 100.
+MASS_MAX   = 100.
 STEER_MAX  = 1. # one radian max steering np.deg2rad(57.5) # Yeah why not
 POSS_STEER = np.pi
 V_MAX      = 2.
@@ -151,11 +151,11 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
 
 def vectorize(states, size=100.0):
     states_vec = np.asarray(states).copy()
-    # states_vec[:, :4] /= size
-    # # states_vec[:, 4]  = 0. # Don't report yaw :)
-    # states_vec[:, 7]  /= V_MAX
-    # states_vec[:, 8]  /= STEER_MAX
-    # states_vec[:, 9]  /= V_MAX
+    states_vec[:, :4] /= size
+    # states_vec[:, 4]  = 0. # Don't report yaw :)
+    states_vec[:, 7]  /= V_MAX
+    states_vec[:, 8]  /= STEER_MAX
+    states_vec[:, 9]  /= V_MAX
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
     # if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
     #     print(np.max(np.abs(states_vec), axis=0))
@@ -172,7 +172,7 @@ if __name__ == '__main__':
     cx = jnp.arange(0, 50, 0.5)
     cy = jnp.sin(cx / 5.0) * cx / 2.0
 
-    traj = pure_pursuit(cx, cy, dt=0.5)
+    traj = pure_pursuit(cx, cy, dt=1.0)
     # print(traj.shape)
     # print(traj)
     fig = go.Figure()
