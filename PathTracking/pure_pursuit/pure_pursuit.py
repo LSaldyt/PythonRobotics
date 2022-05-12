@@ -145,7 +145,6 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         state = update(state, ai, di, dt)
         states = append_state(states, i, state, ai, di)
         time += dt; i += 1
-        print(i)
 
     return vectorize(states)
 
