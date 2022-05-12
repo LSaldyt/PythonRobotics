@@ -122,8 +122,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     key = jr.PRNGKey(seed)
     _, key = jr.split(key)
-    # state_noise = jr.uniform(key, minval=0, maxval=2e-1) # Either no noise or max 2e-1
-    state_noise = 0.
+    state_noise = jr.uniform(key, minval=0, maxval=2e-1) # Either no noise or max 2e-1
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
@@ -134,7 +133,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     target_ind, _, old_i = search_target_index(state, cx, cy, 0)
 
     while t_max >= time and lastIndex > target_ind:
-        # state = apply_noise(state, key, state_noise)
+        state = apply_noise(state, key, state_noise)
         # Calc control input
         ai = proportional_control(V_MAX, state[7])
         try:
@@ -146,6 +145,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         state = update(state, ai, di, dt)
         states = append_state(states, i, state, ai, di)
         time += dt; i += 1
+        print(i)
 
     return vectorize(states)
 
@@ -157,9 +157,12 @@ def vectorize(states, size=100.0):
     states_vec[:, 8]  /= STEER_MAX
     states_vec[:, 9]  /= V_MAX
     # assert np.max(np.abs(states_vec[:, :4])) < 1.5
-    # if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
-    #     print(np.max(np.abs(states_vec), axis=0))
-    #     raise ValueError('Pure pursuit must return a normalized array')
+    if np.max(np.abs(states_vec[:, 5:])) > 1.00001:
+        print(np.max(np.abs(states_vec), axis=0))
+        raise ValueError('Pure pursuit must return a normalized array')
+    mask   = np.minimum(np.sum(states_vec, axis=1), 1e-5)
+    finish = np.argmin(mask, axis=0) + 1
+    states_vec = states_vec[:finish, :]
     return states_vec
 
 
