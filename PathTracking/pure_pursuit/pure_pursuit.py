@@ -117,12 +117,16 @@ import jax.random as jr
 
 # @partial(jit, static_argnames=('dt', 'seed',))
 def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
-        t_max=128.0, size=100.0, dt=0.5, seed=2022):
+        t_max=128.0, size=100.0, dt=0.5, seed=2022,
+        state_noise=None):
     # initial state
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     key = jr.PRNGKey(seed)
     _, key = jr.split(key)
-    state_noise = jr.uniform(key, minval=0, maxval=2e-1) # Either no noise or max 2e-1
+    if state_noise is None:
+        state_noise = 0.
+    else:
+        state_noise = jr.uniform(key, minval=0, maxval=2e-2) # Either no noise or max 2e-1
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
