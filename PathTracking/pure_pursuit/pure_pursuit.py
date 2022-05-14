@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 from functools import partial
 from rich.traceback import install
 install(show_locals=False)
+from rich import print
+from rich.pretty import pprint
 
 # from jax.config import config
 # config.update('jax_disable_jit', True)
@@ -63,7 +65,7 @@ def initial_state(x=0.0, y=0.0, yaw=0.0, v=0.0):
 @jit
 def apply_noise(state, key, state_noise):
     _, key = jr.split(key)
-    return state.at[:4].set(state[:4] + jr.normal(key, (4,)) * state_noise)
+    return state.at[:5].set(state[:5] + jr.normal(key, (5,)) * state_noise)
 
 @jit
 def update(state, f, delta, dt):
@@ -119,13 +121,14 @@ import jax.random as jr
 def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         t_max=128.0, size=100.0, dt=0.5, seed=2022,
         state_noise=None):
-    # initial state
-    state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     key = jr.PRNGKey(seed)
     _, key = jr.split(key)
-    state_noise = jr.uniform(key, minval=0, maxval=2e-2)
-    _, key = jr.split(key)
     yaw0 = jr.uniform(key, minval=-jnp.pi, maxval=jnp.pi)
+    _, key = jr.split(key)
+    v0 = jr.uniform(key, minval=0, maxval=1e-1)
+    state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
+    _, key = jr.split(key)
+    state_noise = jr.uniform(key, minval=0, maxval=3e-2)
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
@@ -139,15 +142,17 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         state = apply_noise(state, key, state_noise)
         # Calc control input
         ai = proportional_control(V_MAX, state[7])
-        try:
-            di, target_ind, old_i = pure_pursuit_steer_control(
-                state, cx, cy, old_i, target_ind)
-        except IndexError: # If spline path is less than max time
-            print('Insufficient time!')
-            break
+        di, target_ind, old_i = pure_pursuit_steer_control(
+            state, cx, cy, old_i, target_ind)
         state = update(state, ai, di, dt)
         states = append_state(states, i, state, ai, di)
         time += dt; i += 1
+    print('Finished pure pursuit!')
+    print(f'Time: {time} / {t_max}')
+    print('indices', lastIndex, target_ind, len(cx))
+    # Time: 142.0 / 1024.0
+    # indices 383 383
+    # (105, 10)
 
     return vectorize(states)
 
