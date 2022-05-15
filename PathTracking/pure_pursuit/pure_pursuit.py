@@ -125,10 +125,10 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     _, key = jr.split(key)
     yaw0 = jr.uniform(key, minval=-jnp.pi, maxval=jnp.pi)
     _, key = jr.split(key)
-    v0 = jr.uniform(key, minval=0, maxval=1e-1)
+    v0 = jr.uniform(key, minval=0, maxval=0.5)
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     _, key = jr.split(key)
-    state_noise = jr.uniform(key, minval=0, maxval=3e-2)
+    state_noise = jr.uniform(key, minval=0, maxval=1.0)
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
@@ -147,9 +147,10 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
         state = update(state, ai, di, dt)
         states = append_state(states, i, state, ai, di)
         time += dt; i += 1
-    print('Finished pure pursuit!')
-    print(f'Time: {time} / {t_max}')
-    print('indices', lastIndex, target_ind, len(cx))
+        # print(f'Time: {time} / {t_max} ({i})')
+    # print('Finished pure pursuit!')
+    # print(f'Time: {time} / {t_max}')
+    # print('indices', lastIndex, target_ind, len(cx))
     # Time: 142.0 / 1024.0
     # indices 383 383
     # (105, 10)
