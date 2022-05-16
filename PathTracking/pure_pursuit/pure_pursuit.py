@@ -65,7 +65,7 @@ def initial_state(x=0.0, y=0.0, yaw=0.0, v=0.0):
 @jit
 def apply_noise(state, key, state_noise):
     _, key = jr.split(key)
-    return state.at[:5].set(state[:5] + jr.normal(key, (5,)) * state_noise)
+    return key, state.at[:5].set(state[:5] + jr.normal(key, (5,)) * state_noise)
 
 @jit
 def update(state, f, delta, dt):
@@ -128,7 +128,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     v0 = jr.uniform(key, minval=0, maxval=0.5)
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     _, key = jr.split(key)
-    state_noise = jr.uniform(key, minval=0, maxval=1.0)
+    state_noise = 5e-2
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
@@ -139,7 +139,7 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     target_ind, _, old_i = search_target_index(state, cx, cy, 0)
 
     while t_max >= time and lastIndex > target_ind:
-        state = apply_noise(state, key, state_noise)
+        key, state = apply_noise(state, key, state_noise)
         # Calc control input
         ai = proportional_control(V_MAX, state[7])
         di, target_ind, old_i = pure_pursuit_steer_control(
