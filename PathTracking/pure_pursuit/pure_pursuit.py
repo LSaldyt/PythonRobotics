@@ -124,11 +124,14 @@ def pure_pursuit(cx, cy, x0=0, y0=0.0, yaw0=0.0, v0=0.0,
     key = jr.PRNGKey(seed)
     _, key = jr.split(key)
     yaw0 = jr.uniform(key, minval=-jnp.pi, maxval=jnp.pi)
-    _, key = jr.split(key)
-    v0 = jr.uniform(key, minval=0, maxval=0.5)
+    # _, key = jr.split(key)
+    # v0 = jr.uniform(key, minval=0, maxval=0.5)
+    v0 = 0.
     state = initial_state(x=x0, y=y0, yaw=yaw0, v=v0)
     _, key = jr.split(key)
-    state_noise = 5e-2
+    # state_noise = 5e-2
+    # state_noise = 1e-3
+    state_noise = 0.
 
     lastIndex = len(cx) - 1
     time = 0.0; i = 0
